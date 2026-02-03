@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'fs/promises';
-import type { MergeOptions, PageInfo } from './types';
+import type { MergeOptions, PageInfo, TemplateData, TemplateOptions, TemplateValue } from './types';
 import { readZip, writeZip, readZipText, writeZipText, ZipFiles } from './utils/zip';
 import {
   parseXml,
@@ -10,6 +10,7 @@ import {
   cloneNodes,
   cloneNode,
   XmlNode,
+  findElements,
 } from './utils/xml';
 
 // WordprocessingML namespace
@@ -259,6 +260,31 @@ export class Document {
       const clonedElements = cloneNodes(elements);
       this._bodyElements.push(...clonedElements);
     }
+  }
+
+  /**
+   * Replace template placeholders in the document.
+   * @param data - Key/value data for replacements
+   * @param options - Templating options
+   */
+  render(data: TemplateData, options: TemplateOptions = {}): void {
+    const pattern = options.pattern ?? /\{([a-zA-Z0-9_.-]+)\}/g;
+    const transform = options.transform;
+    const removeMissing = options.removeMissing === true;
+
+    if (this._bodyElements.length > 0) {
+      this._renderInNodes(this._bodyElements, data, pattern, removeMissing, transform);
+    }
+
+    if (this._bodyElements.length === 0 && this._documentParsed.length > 0) {
+      const documentNode = findElement(this._documentParsed, 'w:document');
+      if (documentNode) {
+        this._renderInNodes(getChildren(documentNode, 'w:document'), data, pattern, removeMissing, transform);
+      }
+    }
+
+    this._renderHeadersFooters(data, pattern, removeMissing, transform);
+    this._dirty = true;
   }
 
   /**
@@ -517,5 +543,170 @@ export class Document {
       'xmlns:w': W_NS,
       'xmlns:r': R_NS,
     };
+  }
+
+  private _renderHeadersFooters(
+    data: TemplateData,
+    pattern: RegExp,
+    removeMissing: boolean,
+    transform?: (value: TemplateValue, key: string) => string
+  ): void {
+    const relsXml = readZipText(this._files, 'word/_rels/document.xml.rels');
+    if (!relsXml) return;
+
+    const relsParsed = parseXml(relsXml);
+    const relationshipsNode = findElement(relsParsed, 'Relationships');
+    if (!relationshipsNode) return;
+
+    const relationshipNodes = findElements(getChildren(relationshipsNode, 'Relationships'), 'Relationship');
+    const headerFooterTargets = new Set<string>();
+    for (const rel of relationshipNodes) {
+      const attrs = rel[':@'] as Record<string, string> | undefined;
+      if (!attrs) continue;
+      const type = attrs['@_Type'];
+      if (
+        type !== 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/header' &&
+        type !== 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer'
+      ) {
+        continue;
+      }
+      const target = attrs['@_Target'];
+      if (typeof target === 'string' && target.length > 0) {
+        headerFooterTargets.add(target);
+      }
+    }
+
+    for (const target of headerFooterTargets) {
+      const normalized = target.startsWith('/') ? target.slice(1) : target;
+      const path = normalized.startsWith('word/') ? normalized : `word/${normalized}`;
+      const xml = readZipText(this._files, path);
+      if (!xml) continue;
+      const parsed = parseXml(xml);
+      this._renderInNodes(parsed, data, pattern, removeMissing, transform);
+      const updated = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${stringifyXml(parsed)}`;
+      writeZipText(this._files, path, updated);
+    }
+  }
+
+  private _renderInNodes(
+    nodes: XmlNode[],
+    data: TemplateData,
+    pattern: RegExp,
+    removeMissing: boolean,
+    transform?: (value: TemplateValue, key: string) => string
+  ): void {
+    for (const node of nodes) {
+      for (const [tagName, value] of Object.entries(node)) {
+        if (tagName === ':@' || tagName === '#text') continue;
+
+        if (tagName === 'w:p' && Array.isArray(value)) {
+          this._replaceInParagraph(node, data, pattern, removeMissing, transform);
+          continue;
+        }
+
+        if (Array.isArray(value)) {
+          this._renderInNodes(value, data, pattern, removeMissing, transform);
+        }
+      }
+    }
+  }
+
+  private _replaceInParagraph(
+    paragraph: XmlNode,
+    data: TemplateData,
+    pattern: RegExp,
+    removeMissing: boolean,
+    transform?: (value: TemplateValue, key: string) => string
+  ): void {
+    const textNodes: XmlNode[] = [];
+    const paragraphChildren = getChildren(paragraph, 'w:p');
+    this._collectTextNodes(paragraphChildren, textNodes);
+    if (textNodes.length === 0) return;
+
+    const segments = textNodes.map((node) => String(node['#text'] ?? ''));
+    const fullText = segments.join('');
+    const replacements = this._applyTemplate(fullText, data, pattern, removeMissing, transform);
+    if (replacements === fullText) return;
+
+    const replacedSegments = this._distributeTextAcrossSegments(replacements, segments);
+
+    for (let i = 0; i < textNodes.length; i++) {
+      textNodes[i]['#text'] = replacedSegments[i] ?? '';
+    }
+  }
+
+  private _collectTextNodes(nodes: XmlNode[], output: XmlNode[]): void {
+    for (const node of nodes) {
+      for (const [tagName, value] of Object.entries(node)) {
+        if (tagName === ':@' || tagName === '#text') continue;
+
+        if (tagName === 'w:t' && Array.isArray(value)) {
+          for (const child of value) {
+            if ('#text' in child) {
+              output.push(child);
+            }
+          }
+          continue;
+        }
+
+        if (Array.isArray(value)) {
+          this._collectTextNodes(value, output);
+        }
+      }
+    }
+  }
+
+  private _applyTemplate(
+    input: string,
+    data: TemplateData,
+    pattern: RegExp,
+    removeMissing: boolean,
+    transform?: (value: TemplateValue, key: string) => string
+  ): string {
+    const normalizedPattern = this._ensureGlobalPattern(pattern);
+    normalizedPattern.lastIndex = 0;
+    return input.replace(normalizedPattern, (match, ...args: unknown[]) => {
+      const key = String(args[0] ?? '');
+      if (!(key in data)) {
+        return removeMissing ? '' : match;
+      }
+      const rawValue = data[key];
+      if (transform) {
+        return transform(rawValue, key);
+      }
+      if (rawValue === null || rawValue === undefined) {
+        return '';
+      }
+      return String(rawValue);
+    });
+  }
+
+  private _ensureGlobalPattern(pattern: RegExp): RegExp {
+    if (pattern.global) return pattern;
+    const flags = `${pattern.flags}g`;
+    return new RegExp(pattern.source, flags);
+  }
+
+  private _distributeTextAcrossSegments(text: string, segments: string[]): string[] {
+    const output: string[] = [];
+    let remaining = text;
+    for (let i = 0; i < segments.length; i++) {
+      const targetLength = segments[i].length;
+      if (i === segments.length - 1) {
+        output.push(remaining);
+        remaining = '';
+      } else {
+        output.push(remaining.slice(0, targetLength));
+        remaining = remaining.slice(targetLength);
+      }
+    }
+
+    if (output.length < segments.length) {
+      while (output.length < segments.length) {
+        output.push('');
+      }
+    }
+
+    return output;
   }
 }

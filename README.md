@@ -7,6 +7,7 @@ A lightweight TypeScript library for Word document (.docx) manipulation. Merge d
 - **Document Merging** - Combine multiple DOCX files into one
 - **Page Management** - Add page breaks, remove pages, get page information
 - **Selective Merging** - Choose specific pages to merge from source documents
+- **Templating** - Replace placeholders like `{name}` in body, tables, headers, and footers
 - **Full Structure Preservation** - Maintains styles, fonts, headers, footers, and other document properties
 - **Zero Native Dependencies** - Pure JavaScript/TypeScript implementation
 
@@ -98,6 +99,21 @@ doc.removePage(1); // Removes the second page
 await doc.toFile('modified.docx');
 ```
 
+### Templating
+
+```typescript
+import { Document } from '@niicojs/word';
+
+const doc = await Document.fromFile('template.docx');
+
+doc.render({
+  name: 'Ava',
+  city: 'Paris',
+});
+
+await doc.toFile('filled.docx');
+```
+
 ## API Reference
 
 ### Document Class
@@ -121,6 +137,7 @@ await doc.toFile('modified.docx');
 | `addPageBreak()` | Add a page break at the end |
 | `removePage(index)` | Remove a page by index (0-based) |
 | `merge(source, options?)` | Merge content from another document |
+| `render(data, options?)` | Replace template placeholders |
 
 ### MergeOptions
 
@@ -131,6 +148,25 @@ interface MergeOptions {
   
   /** Insert page break before merged content. Default: true */
   addPageBreakBefore?: boolean;
+}
+```
+
+### TemplateOptions
+
+```typescript
+type TemplateValue = string | number | boolean | null | undefined;
+
+type TemplateData = Record<string, TemplateValue>;
+
+interface TemplateOptions {
+  /** Placeholder pattern. Must contain one capture group for the key. */
+  pattern?: RegExp;
+
+  /** Remove placeholders when the key is missing. Default: false */
+  removeMissing?: boolean;
+
+  /** Optional value transformer applied before insertion. */
+  transform?: (value: TemplateValue, key: string) => string;
 }
 ```
 

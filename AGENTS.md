@@ -120,8 +120,6 @@ interface PageInfo {
 
 - **Line width**: 120 characters max
 - **Quotes**: Single quotes for strings
-- **Semicolons**: Required
-- **Indentation**: 2 spaces
 
 ### Imports
 

@@ -1,7 +1,10 @@
+import { existsSync } from 'fs';
+import { mkdir, unlink } from 'fs/promises';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { Document } from '../src';
-import { mkdir, unlink } from 'fs/promises';
-import { existsSync } from 'fs';
+import { parseXml } from '../src/utils/xml';
+import type { XmlNode } from '../src/utils/xml';
+import { readZip, readZipText, writeZip, writeZipText } from '../src/utils/zip';
 
 describe('Document', () => {
   const testDir = 'test/fixtures';
@@ -326,6 +329,156 @@ describe('Document', () => {
       await doc.merge(extra);
 
       expect(doc.getPageCount()).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  describe('templating', () => {
+    const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>Hello </w:t></w:r>
+      <w:r><w:t>{name}</w:t></w:r>
+    </w:p>
+    <w:tbl>
+      <w:tr>
+        <w:tc>
+          <w:p><w:r><w:t>{city}</w:t></w:r></w:p>
+        </w:tc>
+      </w:tr>
+    </w:tbl>
+  </w:body>
+</w:document>`;
+
+    const headerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p>
+    <w:r><w:t>Header </w:t></w:r>
+    <w:r><w:t>{name}</w:t></w:r>
+  </w:p>
+</w:hdr>`;
+
+    const footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p>
+    <w:r><w:t>Footer </w:t></w:r>
+    <w:r><w:t>{city}</w:t></w:r>
+  </w:p>
+</w:ftr>`;
+
+    const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
+</Relationships>`;
+
+    const typesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`;
+
+    const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`;
+
+    const extractTextNodes = (nodes: XmlNode[], output: string[]): void => {
+      for (const node of nodes) {
+        for (const [tagName, value] of Object.entries(node)) {
+          if (tagName === ':@' || tagName === '#text') continue;
+          if (tagName === 'w:t' && Array.isArray(value)) {
+            for (const child of value) {
+              if ('#text' in child) {
+                output.push(String(child['#text'] ?? ''));
+              }
+            }
+            continue;
+          }
+          if (Array.isArray(value)) {
+            extractTextNodes(value, output);
+          }
+        }
+      }
+    };
+
+    it('replaces placeholders in body, table, header, and footer', async () => {
+      const base = Document.create();
+      const buffer = await base.toBuffer();
+      const files = await readZip(buffer);
+
+      writeZipText(files, 'word/document.xml', documentXml);
+      writeZipText(files, 'word/_rels/document.xml.rels', relsXml);
+      writeZipText(files, 'word/header1.xml', headerXml);
+      writeZipText(files, 'word/footer1.xml', footerXml);
+      writeZipText(files, '[Content_Types].xml', typesXml);
+      writeZipText(files, '_rels/.rels', rootRelsXml);
+
+      const templatedBuffer = await writeZip(files);
+      const doc = await Document.fromBuffer(templatedBuffer);
+
+      doc.render({ name: 'Ava', city: 'Paris' });
+
+      const outputBuffer = await doc.toBuffer();
+      const outputFiles = await readZip(outputBuffer);
+
+      const docXml = readZipText(outputFiles, 'word/document.xml');
+      const hdrXml = readZipText(outputFiles, 'word/header1.xml');
+      const ftrXml = readZipText(outputFiles, 'word/footer1.xml');
+
+      expect(docXml).toBeTruthy();
+      expect(hdrXml).toBeTruthy();
+      expect(ftrXml).toBeTruthy();
+
+      const docParsed = parseXml(docXml as string);
+      const hdrParsed = parseXml(hdrXml as string);
+      const ftrParsed = parseXml(ftrXml as string);
+
+      const docTexts: string[] = [];
+      const hdrTexts: string[] = [];
+      const ftrTexts: string[] = [];
+
+      extractTextNodes(docParsed, docTexts);
+      extractTextNodes(hdrParsed, hdrTexts);
+      extractTextNodes(ftrParsed, ftrTexts);
+
+      expect(docTexts.join('')).toContain('Hello Ava');
+      expect(docTexts.join('')).toContain('Paris');
+      expect(hdrTexts.join('')).toContain('Header Ava');
+      expect(ftrTexts.join('')).toContain('Footer Paris');
+    });
+
+    it('replaces placeholders split across runs', async () => {
+      const splitXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>{na</w:t></w:r>
+      <w:r><w:t>me}</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>`;
+
+      const base = Document.create();
+      const buffer = await base.toBuffer();
+      const files = await readZip(buffer);
+      writeZipText(files, 'word/document.xml', splitXml);
+
+      const templatedBuffer = await writeZip(files);
+      const doc = await Document.fromBuffer(templatedBuffer);
+
+      doc.render({ name: 'Ivy' });
+
+      const outputBuffer = await doc.toBuffer();
+      const outputFiles = await readZip(outputBuffer);
+      const docXml = readZipText(outputFiles, 'word/document.xml');
+      expect(docXml).toBeTruthy();
+
+      const parsed = parseXml(docXml as string);
+      const texts: string[] = [];
+      extractTextNodes(parsed, texts);
+      expect(texts.join('')).toContain('Ivy');
     });
   });
 });

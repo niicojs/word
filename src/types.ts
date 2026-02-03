@@ -29,3 +29,35 @@ export interface PageInfo {
   /** Index of last body element in this page (inclusive) */
   endElement: number;
 }
+
+/**
+ * Value types supported by document templating
+ */
+export type TemplateValue = string | number | boolean | null | undefined;
+
+/**
+ * Data used to replace template placeholders
+ */
+export type TemplateData = Record<string, TemplateValue>;
+
+/**
+ * Options for templating
+ */
+export interface TemplateOptions {
+  /**
+   * Placeholder pattern. Must contain one capture group for the key.
+   * @default /\{([a-zA-Z0-9_.-]+)\}/g
+   */
+  pattern?: RegExp;
+
+  /**
+   * Remove placeholders when the key is missing.
+   * @default false
+   */
+  removeMissing?: boolean;
+
+  /**
+   * Optional value transformer applied before insertion.
+   */
+  transform?: (value: TemplateValue, key: string) => string;
+}
