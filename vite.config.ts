@@ -5,5 +5,7 @@ export default defineConfig({
   fmt: {
     printWidth: 120,
     singleQuote: true,
+    sortImports: true,
+    endOfLine: 'crlf',
   },
 });

@@ -1,4 +1,5 @@
 import path from 'path';
+
 import { Document } from '../src';
 
 const folder = import.meta.dirname;

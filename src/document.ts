@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'fs/promises';
+
 import type { MergeOptions, PageInfo, TemplateData, TemplateOptions, TemplateValue } from './types';
-import { readZip, writeZip, readZipText, writeZipText, ZipFiles } from './utils/zip';
 import {
   parseXml,
   stringifyXml,
@@ -12,6 +12,7 @@ import {
   XmlNode,
   findElements,
 } from './utils/xml';
+import { readZip, writeZip, readZipText, writeZipText, ZipFiles } from './utils/zip';
 
 // WordprocessingML namespace
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -632,7 +633,7 @@ export class Document {
     data: TemplateData,
     pattern: RegExp,
     removeMissing: boolean,
-    transform?: (value: TemplateValue, key: string) => string
+    transform?: (value: TemplateValue, key: string) => string,
   ): void {
     const relsXml = readZipText(this._files, 'word/_rels/document.xml.rels');
     if (!relsXml) return;
@@ -676,7 +677,7 @@ export class Document {
     data: TemplateData,
     pattern: RegExp,
     removeMissing: boolean,
-    transform?: (value: TemplateValue, key: string) => string
+    transform?: (value: TemplateValue, key: string) => string,
   ): void {
     for (const node of nodes) {
       for (const [tagName, value] of Object.entries(node)) {
@@ -699,7 +700,7 @@ export class Document {
     data: TemplateData,
     pattern: RegExp,
     removeMissing: boolean,
-    transform?: (value: TemplateValue, key: string) => string
+    transform?: (value: TemplateValue, key: string) => string,
   ): void {
     const textNodes: XmlNode[] = [];
     const paragraphChildren = getChildren(paragraph, 'w:p');
@@ -744,7 +745,7 @@ export class Document {
     data: TemplateData,
     pattern: RegExp,
     removeMissing: boolean,
-    transform?: (value: TemplateValue, key: string) => string
+    transform?: (value: TemplateValue, key: string) => string,
   ): string {
     const normalizedPattern = this._ensureGlobalPattern(pattern);
     normalizedPattern.lastIndex = 0;

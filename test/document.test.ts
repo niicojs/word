@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vite-plus/test';
-import { zipSync, strToU8 } from 'fflate';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
+
+import { zipSync, strToU8 } from 'fflate';
+import { describe, it, expect, beforeAll } from 'vite-plus/test';
+
 import { Document } from '../src';
 import { parseXml } from '../src/utils/xml';
 import type { XmlNode } from '../src/utils/xml';

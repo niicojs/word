@@ -137,7 +137,7 @@ await doc.toFile('filled.docx');
 | `addPageBreak()`          | Add a page break at the end         |
 | `removePage(index)`       | Remove a page by index (0-based)    |
 | `merge(source, options?)` | Merge content from another document |
-| `render(data, options?)` | Replace template placeholders |
+| `render(data, options?)`  | Replace template placeholders       |
 
 ### MergeOptions
 
