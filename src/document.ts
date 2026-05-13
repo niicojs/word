@@ -154,6 +154,20 @@ export class Document {
   }
 
   /**
+   * Extract plain text from the document.
+   * Paragraphs are separated by newlines. Formatting and images are ignored.
+   */
+  extractText(): string {
+    const paragraphs: string[] = [];
+
+    for (const element of this._bodyElements) {
+      this._collectParagraphText(element, paragraphs);
+    }
+
+    return paragraphs.join('\n');
+  }
+
+  /**
    * Add a page break at the end of the document
    */
   addPageBreak(): void {
@@ -232,9 +246,7 @@ export class Document {
     let pagesToMerge: PageInfo[];
     if (options.pages !== undefined) {
       // Filter to only requested pages (ignore out-of-range indices)
-      pagesToMerge = options.pages
-        .filter((idx) => idx >= 0 && idx < sourcePages.length)
-        .map((idx) => sourcePages[idx]);
+      pagesToMerge = options.pages.filter((idx) => idx >= 0 && idx < sourcePages.length).map((idx) => sourcePages[idx]);
     } else {
       // Merge all pages
       pagesToMerge = sourcePages;
@@ -253,7 +265,7 @@ export class Document {
     for (const page of pagesToMerge) {
       // Skip empty pages (startElement is -1)
       if (page.startElement === -1) continue;
-      
+
       const elements = sourceDoc._bodyElements.slice(page.startElement, page.endElement + 1);
       // Deep clone elements to avoid reference issues
       const clonedElements = cloneNodes(elements);
@@ -324,13 +336,13 @@ export class Document {
 
     // Get body children (paragraphs, tables, etc.)
     const bodyChildren = getChildren(bodyNode, 'w:body');
-    
+
     // Extract sectPr (section properties) and keep it separately
     const sectPrNode = findElement(bodyChildren, 'w:sectPr');
     if (sectPrNode) {
       this._sectPr = sectPrNode;
     }
-    
+
     // Filter out sectPr from body elements
     this._bodyElements = bodyChildren.filter((child) => !('w:sectPr' in child));
   }
@@ -369,6 +381,69 @@ export class Document {
     }
 
     return false;
+  }
+
+  /**
+   * Collect text from all paragraph nodes under an element.
+   */
+  private _collectParagraphText(node: XmlNode, paragraphs: string[]): void {
+    if ('w:p' in node) {
+      paragraphs.push(this._extractTextFromNodeChildren(getChildren(node, 'w:p')));
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      if (key === ':@' || !Array.isArray(value)) continue;
+
+      for (const child of value) {
+        this._collectParagraphText(child, paragraphs);
+      }
+    }
+  }
+
+  /**
+   * Extract text recursively from Word text nodes.
+   */
+  private _extractTextFromNodeChildren(children: XmlNode[]): string {
+    let text = '';
+
+    for (const child of children) {
+      if ('w:t' in child) {
+        text += this._extractTextNodeValue(child);
+        continue;
+      }
+
+      for (const [key, value] of Object.entries(child)) {
+        if (key === ':@' || !Array.isArray(value)) continue;
+
+        text += this._extractTextFromNodeChildren(value);
+      }
+    }
+
+    return text;
+  }
+
+  /**
+   * Extract the value from a w:t node.
+   */
+  private _extractTextNodeValue(node: XmlNode): string {
+    const value = node['w:t'];
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (!Array.isArray(value)) {
+      return '';
+    }
+
+    let text = '';
+    for (const child of value) {
+      const childText = child['#text'];
+      if (typeof childText === 'string') {
+        text += childText;
+      }
+    }
+
+    return text;
   }
 
   /**
@@ -424,18 +499,22 @@ export class Document {
    * Create [Content_Types].xml
    */
   private _createContentTypes(): string {
-    const types = createElement(
-      'Types',
-      { xmlns: CT_NS },
-      [
-        createElement('Default', { Extension: 'rels', ContentType: 'application/vnd.openxmlformats-package.relationships+xml' }, []),
-        createElement('Default', { Extension: 'xml', ContentType: 'application/xml' }, []),
-        createElement('Override', {
+    const types = createElement('Types', { xmlns: CT_NS }, [
+      createElement(
+        'Default',
+        { Extension: 'rels', ContentType: 'application/vnd.openxmlformats-package.relationships+xml' },
+        [],
+      ),
+      createElement('Default', { Extension: 'xml', ContentType: 'application/xml' }, []),
+      createElement(
+        'Override',
+        {
           PartName: '/word/document.xml',
           ContentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml',
-        }, []),
-      ]
-    );
+        },
+        [],
+      ),
+    ]);
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${stringifyXml([types])}`;
   }
 
@@ -443,17 +522,17 @@ export class Document {
    * Create _rels/.rels
    */
   private _createRootRels(): string {
-    const rels = createElement(
-      'Relationships',
-      { xmlns: PKG_NS },
-      [
-        createElement('Relationship', {
+    const rels = createElement('Relationships', { xmlns: PKG_NS }, [
+      createElement(
+        'Relationship',
+        {
           Id: 'rId1',
           Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument',
           Target: 'word/document.xml',
-        }, []),
-      ]
-    );
+        },
+        [],
+      ),
+    ]);
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${stringifyXml([rels])}`;
   }
 
@@ -480,21 +559,25 @@ export class Document {
       // Create default section properties
       const sectPr = createElement('w:sectPr', {}, [
         createElement('w:pgSz', { 'w:w': '12240', 'w:h': '15840' }, []), // Letter size
-        createElement('w:pgMar', {
-          'w:top': '1440',
-          'w:right': '1440',
-          'w:bottom': '1440',
-          'w:left': '1440',
-          'w:header': '720',
-          'w:footer': '720',
-          'w:gutter': '0',
-        }, []),
+        createElement(
+          'w:pgMar',
+          {
+            'w:top': '1440',
+            'w:right': '1440',
+            'w:bottom': '1440',
+            'w:left': '1440',
+            'w:header': '720',
+            'w:footer': '720',
+            'w:gutter': '0',
+          },
+          [],
+        ),
       ]);
       bodyChildren.push(sectPr);
     }
 
     const body = createElement('w:body', {}, bodyChildren);
-    
+
     // Build namespace attributes - use collected namespaces or defaults
     const namespaceAttrs = this._getNamespaceAttributes();
     const document = createElement('w:document', namespaceAttrs, [body]);
@@ -511,7 +594,7 @@ export class Document {
     if (Object.keys(this._namespaces).length > 0) {
       return { ...this._namespaces };
     }
-    
+
     // Default minimal namespaces for new documents
     return {
       'xmlns:w': W_NS,

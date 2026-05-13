@@ -3,6 +3,10 @@
   "version": "0.2.0",
   "license": "MIT",
   "author": "niico",
+  "files": [
+    "dist",
+    "src"
+  ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -19,13 +23,6 @@
       }
     },
     "./package.json": "./package.json"
-  },
-  "files": [
-    "dist",
-    "src"
-  ],
-  "engines": {
-    "node": ">=20"
   },
   "scripts": {
     "dev": "tsdx dev",
@@ -47,12 +44,15 @@
     "bunchee": "^6.10.0",
     "tsdx": "latest",
     "typescript": "^6.0.3",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
-    "vite-plus": "latest"
+    "vite-plus": "latest",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
   },
-  "packageManager": "bun@1.3.14",
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
-  }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "bun@1.3.14"
 }

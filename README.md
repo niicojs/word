@@ -73,8 +73,8 @@ import { Document } from '@niicojs/word';
 
 // Load from buffer
 const data = await fetch('https://example.com/document.docx')
-  .then(res => res.arrayBuffer())
-  .then(buf => new Uint8Array(buf));
+  .then((res) => res.arrayBuffer())
+  .then((buf) => new Uint8Array(buf));
 
 const doc = await Document.fromBuffer(data);
 
@@ -104,22 +104,22 @@ await doc.toFile('modified.docx');
 
 #### Static Methods
 
-| Method | Description |
-|--------|-------------|
-| `Document.create()` | Create a new empty document |
-| `Document.fromFile(path)` | Load a document from a file path |
+| Method                      | Description                       |
+| --------------------------- | --------------------------------- |
+| `Document.create()`         | Create a new empty document       |
+| `Document.fromFile(path)`   | Load a document from a file path  |
 | `Document.fromBuffer(data)` | Load a document from a Uint8Array |
 
 #### Instance Methods
 
-| Method | Description |
-|--------|-------------|
-| `toFile(path)` | Save the document to a file |
-| `toBuffer()` | Save the document to a Uint8Array |
-| `getPageCount()` | Get the number of pages |
-| `getPages()` | Get information about all pages |
-| `addPageBreak()` | Add a page break at the end |
-| `removePage(index)` | Remove a page by index (0-based) |
+| Method                    | Description                         |
+| ------------------------- | ----------------------------------- |
+| `toFile(path)`            | Save the document to a file         |
+| `toBuffer()`              | Save the document to a Uint8Array   |
+| `getPageCount()`          | Get the number of pages             |
+| `getPages()`              | Get information about all pages     |
+| `addPageBreak()`          | Add a page break at the end         |
+| `removePage(index)`       | Remove a page by index (0-based)    |
 | `merge(source, options?)` | Merge content from another document |
 
 ### MergeOptions
@@ -128,7 +128,7 @@ await doc.toFile('modified.docx');
 interface MergeOptions {
   /** Page indices to include (0-based). If omitted, all pages are merged. */
   pages?: number[];
-  
+
   /** Insert page break before merged content. Default: true */
   addPageBreakBefore?: boolean;
 }
@@ -140,10 +140,10 @@ interface MergeOptions {
 interface PageInfo {
   /** 0-based page index */
   index: number;
-  
+
   /** Index of first body element in this page */
   startElement: number;
-  
+
   /** Index of last body element in this page (inclusive) */
   endElement: number;
 }
@@ -161,6 +161,7 @@ This library works by:
 **Page detection** is based on explicit page break elements (`<w:br w:type="page"/>`). Note that Word may render page breaks in different positions based on content flow, fonts, and page size - this library only detects explicit page breaks.
 
 When merging documents, the library:
+
 - Preserves all namespace declarations from source documents
 - Copies document structure (styles, fonts, headers, footers, etc.) from the first source
 - Combines body content with configurable page breaks between documents

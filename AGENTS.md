@@ -7,6 +7,7 @@ Instructions for AI agents working on this codebase.
 `@niicojs/word` is a TypeScript library for Word/DOCX document operations. Zero-config setup using modern, high-performance tooling.
 
 **Current Features (v0.1):**
+
 - **Document merging** - Merge pages from multiple DOCX files
 - **Page management** - Add/remove pages using page breaks
 
@@ -41,7 +42,7 @@ dist/               # Build output (generated, do not edit)
 
 ### Build & Development
 
-Run all test with bun, not node. 
+Run all test with bun, not node.
 
 ```bash
 bun install          # Install dependencies
@@ -103,14 +104,14 @@ doc.merge(source, options?): Promise<void>            // Merge from another doc
 
 ```typescript
 interface MergeOptions {
-  pages?: number[];           // Page indices to merge (0-based), omit for all
-  addPageBreakBefore?: boolean;  // Add break before merged content (default: true)
+  pages?: number[]; // Page indices to merge (0-based), omit for all
+  addPageBreakBefore?: boolean; // Add break before merged content (default: true)
 }
 
 interface PageInfo {
-  index: number;              // 0-based page index
-  startElement: number;       // First body element index (-1 if empty)
-  endElement: number;         // Last body element index (-1 if empty)
+  index: number; // 0-based page index
+  startElement: number; // First body element index (-1 if empty)
+  endElement: number; // Last body element index (-1 if empty)
 }
 ```
 
@@ -180,6 +181,7 @@ DOCX files are ZIP archives containing XML:
 **Page breaks** are detected as: `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`
 
 Key namespaces:
+
 - `w:` - WordprocessingML (main content)
 - `r:` - Relationships
 

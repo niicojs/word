@@ -1,7 +1,14 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vite-plus/test';
+import { zipSync, strToU8 } from 'fflate';
 import { Document } from '../src';
 import { mkdir, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
+
+const createDocxBuffer = (documentXml: string): Uint8Array => {
+  return zipSync({
+    'word/document.xml': strToU8(documentXml),
+  });
+};
 
 describe('Document', () => {
   const testDir = 'test/fixtures';
@@ -96,6 +103,62 @@ describe('Document', () => {
 
       doc.addPageBreak();
       expect(doc.getPageCount()).toBe(4);
+    });
+  });
+
+  describe('extractText', () => {
+    it('returns an empty string for empty documents', () => {
+      const doc = Document.create();
+
+      expect(doc.extractText()).toBe('');
+    });
+
+    it('extracts text with a newline for each paragraph', async () => {
+      const buffer = createDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>First paragraph</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Second paragraph</w:t></w:r></w:p>
+  </w:body>
+</w:document>`);
+
+      const doc = await Document.fromBuffer(buffer);
+
+      expect(doc.extractText()).toBe('First paragraph\nSecond paragraph');
+    });
+
+    it('ignores formatting and images', async () => {
+      const buffer = createDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:rPr><w:b /></w:rPr><w:t>Bold</w:t></w:r>
+      <w:r><w:t> text</w:t></w:r>
+      <w:r><w:drawing><w:inline><w:extent cx="1" cy="1" /></w:inline></w:drawing></w:r>
+    </w:p>
+  </w:body>
+</w:document>`);
+
+      const doc = await Document.fromBuffer(buffer);
+
+      expect(doc.extractText()).toBe('Bold text');
+    });
+
+    it('extracts paragraphs nested in tables', async () => {
+      const buffer = createDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:tbl>
+      <w:tr>
+        <w:tc><w:p><w:r><w:t>Cell text</w:t></w:r></w:p></w:tc>
+      </w:tr>
+    </w:tbl>
+  </w:body>
+</w:document>`);
+
+      const doc = await Document.fromBuffer(buffer);
+
+      expect(doc.extractText()).toBe('Cell text');
     });
   });
 
