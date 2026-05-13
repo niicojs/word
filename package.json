@@ -27,8 +27,8 @@
   "scripts": {
     "dev": "tsdx dev",
     "build": "tsdx build",
-    "test": "tsdx test",
-    "test:watch": "tsdx test --watch",
+    "test": "vp test",
+    "test:watch": "vp test --watch",
     "lint": "tsdx lint",
     "format": "tsdx format",
     "format:check": "tsdx format --check",
